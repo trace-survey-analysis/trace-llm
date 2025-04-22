@@ -1,0 +1,18 @@
+# Core web framework
+fastapi>=0.95.0,<0.110.0
+uvicorn[standard]>=0.22.0,<0.28.0
+
+# Database
+psycopg2-binary>=2.9.5,<3.0.0
+
+# Utility
+pydantic>=2.0.0,<3.0.0
+python-dotenv>=0.21.0,<2.0.0
+
+# Google AI
+google-generativeai>=0.3.0,<0.6.0
+
+# Use a simpler embedding approach for compatibility
+# Instead of sentence-transformers which can be problematic
+scikit-learn>=1.0.0,<2.0.0
+sentence-transformers>=2.2.2,<3.0.0
