@@ -1,0 +1,79 @@
+void setBuildStatus(String message, String state) {
+    def repoUrl = scm.getUserRemoteConfigs()[0].getUrl()
+    
+    echo "DEBUG: Repository URL detected: ${repoUrl}"
+  step([
+      $class: "GitHubCommitStatusSetter",
+      reposSource: [$class: "ManuallyEnteredRepositorySource", url: repoUrl],
+      contextSource: [$class: "ManuallyEnteredCommitContextSource", context: "ci/jenkins/commitlint"],
+      errorHandlers: [[$class: "ChangingBuildStatusErrorHandler", result: "UNSTABLE"]],
+      statusResultSource: [ $class: "ConditionalStatusResultSource", results: [[$class: "AnyBuildResult", message: message, state: state]] ]
+  ]);
+}
+
+
+
+pipeline {
+    agent any
+    options {
+        disableConcurrentBuilds()
+    }
+    stages {
+        stage('Initialize') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'github-pat', usernameVariable: 'GITHUB_USERNAME', passwordVariable: 'GITHUB_TOKEN')]) {
+                    setBuildStatus("Checking commit messages...", "PENDING")
+                }
+            }
+        }
+        
+        stage('Validate Conventional Commits') {
+            steps {
+                script {
+                    // Get the latest commit message
+                    def latestCommit = sh(script: "git log -1 --pretty=format:'%s %b'", returnStdout: true).trim()
+                    
+                    // Define the regular expression pattern for conventional commits
+                    def conventionalCommitPattern = ~/^(fix|feat|build|chore|ci|docs|style|refactor|perf|test)(\([a-z0-9-]+\))?!?:\s.+/
+                    
+                    // Define regex pattern for breaking change footer
+                    def breakingChangePattern = ~/BREAKING CHANGE:\s.+/
+                    
+                    // Validate the latest commit
+                    if (!(latestCommit =~ conventionalCommitPattern) && !(latestCommit =~ breakingChangePattern)) {
+                        error """
+                        The latest commit does not follow the Conventional Commits format:
+                        ${latestCommit}
+                        
+                        Please ensure the commit follows the format:
+                        1. fix: <description> - for bug fixes (PATCH)
+                        2. feat: <description> - for new features (MINOR)
+                        3. <type>!: <description> or with footer BREAKING CHANGE: <description> - for breaking changes (MAJOR)
+                        4. Other types like build:, chore:, ci:, docs:, style:, refactor:, perf:, test: are also allowed
+                        
+                        See https://www.conventionalcommits.org for more details.
+                        """
+                    }
+                    
+                    echo "The latest commit follows the Conventional Commits format!"
+                }
+            }
+        }
+    }
+    
+    post {
+        success {            
+                withCredentials([usernamePassword(credentialsId: 'github-pat', usernameVariable: 'GITHUB_USERNAME', passwordVariable: 'GITHUB_TOKEN')])
+                {
+                    setBuildStatus("Commit messages are valid!", "SUCCESS")
+                }
+            }
+            
+        failure {
+            withCredentials([usernamePassword(credentialsId: 'github-pat', usernameVariable: 'GITHUB_USERNAME', passwordVariable: 'GITHUB_TOKEN')]) {
+            setBuildStatus("Invalid commit messages! Please fix the commit messages according to conventional commits standards.", "FAILURE")    
+            }    
+        }
+        
+    }
+}
